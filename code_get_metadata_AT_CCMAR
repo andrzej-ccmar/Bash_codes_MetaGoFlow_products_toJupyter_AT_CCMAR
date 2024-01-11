@@ -1,0 +1,108 @@
+*** code to automatically concatanate metadata from EMOBON github https://github.com/emo-bon/governance-data/blob/main/logsheets.csv 
+*** using gdown to download googledocs from github EMOBON 
+
+*** it is possible to download a list of all the metadata files submitted to gh - 17 stations x 2 sample types (water and sediment)
+*** downloaded list is called logsheets.csv
+*** automate download
+
+cut -f 4 -d, logsheets.csv > logsheets_cut4 ; 
+cut -f 5 -d, logsheets.csv > logsheets_cut5 ; 
+cut -f 3 -d, logsheets.csv > logsheets_cut3 ; 
+paste logsheets_cut4 logsheets_cut3 > water_meta ; 
+sed -i 's/^/gdown  /g' water_meta
+sed -i 's/\t/ -O  /g' water_meta
+sed -i 's/$/_water_meta/g' water_meta
+sed -i 's/$/.xlsx/g' water_meta
+paste logsheets_cut5 logsheets_cut3 > sediment_meta ; 
+
+sed -i 's/^/gdown  /g' sediment_meta
+sed -i 's/\t/ -O  /g' sediment_meta
+sed -i 's/$/_sediment_meta/g' sediment_meta
+sed -i 's/$/.xlsx/g' sediment_meta
+
+bash water_meta
+bash sediment_meta
+
+*** in case not all the samples are needed, but only the ones for which sequencing has been already run
+*** confront the metadata with the sequencing output list
+*** samples already sequenced are listed in Batch_1_&_2_sequencing_metadata_v1.csv (needs to be provided separately)
+
+cut  -f1 -d, Batch_1_\&_2_sequencing_metadata_v1.csv > Batch_part1
+cut  -f22 -d, Batch_1_\&_2_sequencing_metadata_v1.csv > Batch_part2
+paste Batch_part1 Batch_part2 > Batch_cut1and22.csv
+for i in $(<sample_list) ; do grep $i  Batch_cut1and22.csv ; done > check.csv
+
+cut -f1 check.csv > biol_names ; 
+cat *_meta.xlsx.csv > all_meta.csv
+for i in $(<biol_names) ; do grep $i  all_meta.csv ; done > biol_meta.csv
+
+*** sediment and water need to be run separated - they have different factors
+*** use in2csv to just get the sheet "measured" from the xlxs files
+*** i.e. only the sheet with the important biological metadata
+for f in *_meta.xlsx ; do in2csv -I --sheet "measured" $f > $f\.csv ; done
+for f in *_meta.xlsx ; do in2csv -d "\t" -I --sheet "measured" $f > $f\.tsv ; done
+cat *_sediment_meta.xlsx.csv > all_sediment_meta.csv
+cat *_water_meta.xlsx.csv > all_water_meta.csv
+for i in $(<biol_names) ; do grep $i  all_sediment_meta.csv ; done > biol_sediment_meta.csv
+for i in $(<biol_names) ; do grep $i  all_water_meta.csv ; done > biol_water_meta.csv
+
+*** for now the most of the google docs are not corrected and have a multidude of small issues
+
+*** here I remove commas from the values
+for f in *_meta.xlsx ; do in2csv -I --sheet "measured" $f > $f\.csv ; done
+for f in *_meta.xlsx.csv ; do csvformat -T $f > $f\.tsv ; done 
+for f in *_meta.xlsx.csv.tsv ; do sed -i 's/,/./g' $f ; done
+rm *_meta.xlsx.csv
+rename 's/.tsv//g' *meta.xlsx.csv.tsv
+for f in *meta.xlsx.csv ; do sed -i 's/\t/,/g' $f ; done
+for f in *meta.xlsx.csv ; do sed -i '/,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,,/d' $f ; done
+
+*** different sheets have different order of columns
+*** here change the factor name in "header="${1:-<FACTOR>}"
+
+for f in *_sediment_meta.xlsx.csv ; do  awk -v header="${1:-sea_surf_temp}" ' BEGIN { FS="," ; c=0 } NR == 1 { for (i=1;i<=NF;i++) { if ($i==header) { c=i }} } NR > 1 && c>0 { print $c } ' $f > $f\sea_surf_temp ; done 
+cat *temp > all_temp_factor
+rm *temp
+
+for f in *_sediment_meta.xlsx.csv ; do  awk -v header="${1:-ph}" ' BEGIN { FS="," ; c=0 } NR == 1 { for (i=1;i<=NF;i++) { if ($i==header) { c=i }} } NR > 1 && c>0 { print $c } ' $f > $f\ph ; done 
+cat *ph > all_ph_factor
+rm *ph
+
+for f in *_sediment_meta.xlsx.csv ; do  awk -v header="${1:-redox_potential}" ' BEGIN { FS="," ; c=0 } NR == 1 { for (i=1;i<=NF;i++) { if ($i==header) { c=i }} } NR > 1 && c>0 { print $c } ' $f > $f\redox_potential ; done 
+cat *redox_potential > all_redox_potential_factor
+rm *redox_potential
+
+for f in *_sediment_meta.xlsx.csv ; do  awk -v header="${1:-alkalinity}" ' BEGIN { FS="," ; c=0 } NR == 1 { for (i=1;i<=NF;i++) { if ($i==header) { c=i }} } NR > 1 && c>0 { print $c } ' $f > $f\alkalinity ; done 
+cat *alkalinity > all_alkalinity_factor
+rm *alkalinity
+
+for f in *_sediment_meta.xlsx.csv ; do  awk -v header="${1:-ammonium}" ' BEGIN { FS="," ; c=0 } NR == 1 { for (i=1;i<=NF;i++) { if ($i==header) { c=i }} } NR > 1 && c>0 { print $c } ' $f > $f\ammonium ; done 
+cat *ammonium > all_ammonium_factor
+rm *ammonium
+
+for f in *_sediment_meta.xlsx.csv ; do  awk -v header="${1:-bac_prod}" ' BEGIN { FS="," ; c=0 } NR == 1 { for (i=1;i<=NF;i++) { if ($i==header) { c=i }} } NR > 1 && c>0 { print $c } ' $f > $f\bac_prod ; done 
+cat *bac_prod > all_bac_prod_factor
+rm *bac_prod
+
+for f in *_sediment_meta.xlsx.csv ; do  awk -v header="${1:-biomass}" ' BEGIN { FS="," ; c=0 } NR == 1 { for (i=1;i<=NF;i++) { if ($i==header) { c=i }} } NR > 1 && c>0 { print $c } ' $f > $f\biomass ; done 
+cat *biomass > all_biomass_factor
+rm *biomass
+
+for f in *_sediment_meta.xlsx.csv ; do  awk -v header="${1:-chlorophyl}" ' BEGIN { FS="," ; c=0 } NR == 1 { for (i=1;i<=NF;i++) { if ($i==header) { c=i }} } NR > 1 && c>0 { print $c } ' $f > $f\chlorophyl ; done 
+cat *chlorophyl > all_chlorophyl_factor
+rm *chlorophyl
+
+for f in *_sediment_meta.xlsx.csv ; do  awk -v header="${1:-diss_oxygen}" ' BEGIN { FS="," ; c=0 } NR == 1 { for (i=1;i<=NF;i++) { if ($i==header) { c=i }} } NR > 1 && c>0 { print $c } ' $f > $f\diss_oxygen ; done 
+cat *diss_oxygen > all_diss_oxygen_factor
+rm *diss_oxygen
+
+for f in *_sediment_meta.xlsx.csv ; do  awk -v header="${1:-sea_surf_salinity}" ' BEGIN { FS="," ; c=0 } NR == 1 { for (i=1;i<=NF;i++) { if ($i==header) { c=i }} } NR > 1 && c>0 { print $c } ' $f > $f\sea_surf_salinity ; done 
+cat *sea_surf_salinity > all_sea_surf_salinity_factor
+rm *sea_surf_salinity
+
+for f in  *_sediment_meta.xlsx.csv ; do cut -f1 -d, $f ; done > all_names
+
+*** paste everything together - please note that in Jan 2024 the googlesheets still contained many other issues like not-standardized units, misplaced values (and more...)
+paste all_names all_*_factor > biol_factors_1.csv
+sed -i 's/\t/,/g' biol_factors_1.csv
+

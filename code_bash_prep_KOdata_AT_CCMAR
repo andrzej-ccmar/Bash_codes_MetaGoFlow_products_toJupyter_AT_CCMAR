@@ -1,0 +1,231 @@
+*** code to analyse and visualise KEGG onthology, a product of MetaGoFlow pipeline on EMO BON data
+*** for a detail explanation of the code please see code_bash_prep_SSUdata_AT_CCMAR
+*** the files are (currently) located on redi, find them by going to the root and
+tree -f | grep  -o  "./usr.*merged.summary.go"
+
+*** on your machine create and copy the file list output into:
+touch downloaded_KO
+
+*** remove mocks and blank sample
+sed -i '/DDC/d' downloaded_KO
+sed -i '/UDI204/d' downloaded_KO
+sed -i '/UDI201/d' downloaded_KO
+sed -i '/UDI213/d' downloaded_KO
+sed -i '/UDI212/d' downloaded_KO
+sed -i '/test/d' downloaded_KO
+
+*** also delete single samples - i.e. unique factors
+sed -i '/UDI233/d' downloaded_KO
+sed -i '/UDI235/d' downloaded_KO
+sed -i '/UDI238/d' downloaded_KO
+
+uniq downloaded_KO > downloaded_KO_uniq
+wc -l downloaded_KO_uniq
+
+*** downloaded need correction - for some reason if there is only a single sample in the folder (batch sequencing) then it is not placed in its own subfolder but rather dumped in the batch seq folder (at least in HCML data) - hence remove such samples
+grep  UDI[0-9]* downloaded_KO_uniq > temp ;
+mv temp downloaded ; 
+printf 'scp redi:/\n%.0s' {1..50} >  just_to_paste ;
+paste just_to_paste downloaded > downloaded_pasted ;
+sed -i 's/	.//g' downloaded_pasted ;
+sed -i 's/$/ . /g' downloaded_pasted  ;
+grep -o ....merged.summary.ko downloaded_pasted > file_names ;
+awk '{print NR " "  $s}' file_names | cut -f1 -d" " | sed 's/^/S/g' > numbers ;
+paste file_names numbers | sed 's/^/| mv /g' > to_paste ;
+paste downloaded_pasted to_paste > to_bash ; 
+sed -i 's/|/;/g' to_bash ; 
+bash to_bash ; 
+for f in S[0-9] ; do rename 's/S/S00/g' $f ; done ; 
+for f in S[0-9][0-9] ; do rename 's/S/S0/g' $f ; done ; 
+
+*** to get the K[0-9]* number - please note that the data structure differs from SSU and hence the code needs some changes
+*** for KO should be f4
+for f in S[0-9][0-9][0-9] ; do cut -f4 -d'"' $f > $f\_cut1 ; done ; 
+*** and f2
+for f in S[0-9][0-9][0-9]  ; do cut -f2 -d'"' $f > $f\_cut2 ; done ; 
+
+ls *cut1 > list_cut_1 ; 
+ls *cut2 > list_cut_2 ; 
+sed 's/_cut2/comb/g' list_cut_2 > listcomb ; 
+paste  list_cut_1 list_cut_2 listcomb > to_combine ; 
+sed -i 's/^/paste /g' to_combine ; 
+sed -i 's/cut2/cut2 > /g' to_combine ; 
+bash to_combine ; 
+cat S*comb > main ;
+cut -f1 main > main_cut_1 ;
+sort main_cut_1 | uniq -c | grep -o "K[0-9]*" > row_name 
+sed 's/$/\t0/g' row_name > row_name0 ; 
+for f in S*comb ; do cat $f row_name0 > $f\to_sort ; done ; 
+for f in S*to_sort ; do sort -r -k1,1 $f > $f\sorted ; done ; 
+for f in *sorted ; do sort -u -k1,1 $f > $f\unique ; done ; 
+for f in *sortedunique ; do cut -f2 $f > $f\clean ; done ;
+paste row_name *sorteduniqueclean > Table_EMOBON_KO.csv ; 
+rm S* ;  rm row* ; rm mai* ; rm to_combine ; rm list* 
+grep -o UDI[0-9][0-9][0-9] downloaded > UDIcode ;
+grep -o [A-Z0-9]*.UDI[0-9][0-9][0-9] downloaded > sample_code
+grep -o /[L,S]SU  downloaded | grep -o [L,S]SU > LorS_SU ;
+paste sample_code > to_header
+sed -i '1s/^/#NAME\n/' to_header
+sed -i 's/\t/_/g' to_header 
+datamash transpose < to_header > Table_header
+
+*** OTU-like table with all KEGG onthology - below, other OTU-like tables are produced with a subset of this information
+cat Table_header Table_EMOBON_KO.csv > Table_EMOBON_header_KO.csv
+
+*** produce metadata file
+grep -o "H[A-Za-z0-9]*.UDI[0-9]*" downloaded > sample_list
+cut  -f1 -d, Batch_1_\&_2_sequencing_metadata_v1.csv > Batch_part1
+cut  -f22 -d, Batch_1_\&_2_sequencing_metadata_v1.csv > Batch_part2
+paste Batch_part1 Batch_part2 > Batch_cut1and22.csv
+for i in $(<sample_list) ; do grep $i  Batch_cut1and22.csv ; done > check.csv
+cut -f1 check.csv | cut -f2 -d_ > station_name
+cut -f1 check.csv | cut -f3 -d_ > material_name
+cut -f1 check.csv | cut -f5 -d_ > size_name
+sed -i 's/Wa/water/g' material_name
+sed -i 's/So/sediment/g' material_name
+sed -i 's/1/allsizes_for_sediment/g' size_name
+sed -i 's/^2/allsizes_for_sediment/g' size_name
+sed -i 's/micro/allsizes_for_sediment/g' size_name
+sed 's/$/_/g' station_name > station_name_
+sed 's/$/_/g' material_name > material_name_
+paste -d "" station_name_ material_name > station_and_material
+paste -d "" material_name_ size_name > material_and_size
+paste -d "" station_name_ material_name_ size_name > ALLfactors
+paste sample_code station_name material_name size_name station_and_material material_and_size ALLfactors > fakemeta
+sed  '1s/^/#NAME\tstation\tmaterial\tsize\tstation_and_material\tmaterial_and_size\tALLfactors\n/' fakemeta > real_metadata_KO.csv
+
+
+*** to group the KO datasets, downloaded a classification file from the KEGG website https://www.genome.jp/kegg-bin/get_htext#B27 based on ecoli genome, file is called eco00001.keg
+*** please note that here E. coli KEGG map is used which may not be the most suitable for the marine metagenomics
+*** if required change the input KEGG map file
+
+*** option 1. to produce OTU-like table displaying KEGGs for each A category 
+
+*** split it by categories - they are called A, B, C and D - from the top to bottom of hierarchy 
+csplit -z eco00001.keg /^A/ '{*}'
+
+*** main categories (A-categories)
+A09100 Metabolism
+A09120 Genetic Information Processing
+A09130 Environmental Information Processing
+A09140 Cellular Processes
+A09150 Organismal Systems # here no KEGGs found
+A09160 Human Diseases
+A09180 Brite Hierarchies
+A09190 Not Included in Pathway or Brite
+
+grep -o K[0-9]* xx01 > Kcat_A_metabolism ;
+grep -o K[0-9]* xx02 > Kcat_A_gip ;
+grep -o K[0-9]* xx03 > Kcat_A_eip ;
+grep -o K[0-9]* xx04 > Kcat_A_cellular ;
+# grep -o K[0-9]* xx05 > Kcat_A_organismal ; - no KEGG information here
+grep -o K[0-9]* xx06 > Kcat_A_disease ;
+grep -o K[0-9]* xx07 > Kcat_A_brite ;
+grep -o K[0-9]* xx08 > Kcat_A_unclassified ;
+
+for f in Kcat* ; do sed -i '/^K$/d' $f ; done
+
+
+*** to get the Knumbers out from the final CSV table and keep the header
+head -1 Table_EMOBON_header_KO.csv > header
+for i in $(<Kcat_A_metabolism) ; do grep $i Table_EMOBON_header_KO.csv  ; done > Table_EMOBON_Kcat_metabolism_KO
+cat header Table_EMOBON_Kcat_metabolism_KO > Table_EMOBON_Kcat_metabolism_KO.csv
+
+for i in $(<Kcat_A_gip) ; do grep $i Table_EMOBON_header_KO.csv  ; done > Table_EMOBON_Kcat_gip_KO
+cat header Table_EMOBON_Kcat_gip_KO > Table_EMOBON_Kcat_gip_KO.csv
+
+for i in $(<Kcat_A_eip) ; do grep $i Table_EMOBON_header_KO.csv  ; done > Table_EMOBON_Kcat_eip_KO
+cat header Table_EMOBON_Kcat_eip_KO > Table_EMOBON_Kcat_eip_KO.csv
+
+for i in $(<Kcat_A_cellular) ; do grep $i Table_EMOBON_header_KO.csv  ; done > Table_EMOBON_Kcat_cellular_KO
+cat header Table_EMOBON_Kcat_cellular_KO > Table_EMOBON_Kcat_cellular_KO.csv
+
+# for i in $(<Kcat_A_organismal) ; do grep $i Table_EMOBON_header_KO.csv  ; done > Table_EMOBON_Kcat_organismal_KO
+# cat header Table_EMOBON_Kcat_organismal_KO > Table_EMOBON_Kcat_organismal_KO.csv
+
+for i in $(<Kcat_A_disease) ; do grep $i Table_EMOBON_header_KO.csv  ; done > Table_EMOBON_Kcat_disease_KO
+cat header Table_EMOBON_Kcat_disease_KO > Table_EMOBON_Kcat_disease_KO.csv
+
+for i in $(<Kcat_A_brite) ; do grep $i Table_EMOBON_header_KO.csv  ; done > Table_EMOBON_Kcat_brite_KO
+cat header Table_EMOBON_Kcat_brite_KO > Table_EMOBON_Kcat_brite_KO.csv
+
+for i in $(<Kcat_A_unclassified) ; do grep $i Table_EMOBON_header_KO.csv  ; done > Table_EMOBON_Kcat_unclassified_KO
+cat header Table_EMOBON_Kcat_unclassified_KO > Table_EMOBON_Kcat_unclassified_KO.csv
+
+*** option 2. to produce OTU-like table displaying KEGGs values binned according to their A category 
+
+for f in Table_EMOBON_Kcat_*_KO ; do numsum -c -s ',' $f > $f\sum ; done
+ls *sum > sum_files_list
+cat *sum > Table_Kcat_total
+cut -f2- -d ' ' Table_Kcat_total > Table_Kcat_total_f2
+paste -d ' ' sum_files_list Table_Kcat_total_f2 > Table_Kcat_total_list
+cat header Table_Kcat_total_list > Table_Kcat_summed.csv
+sed -i 's/ /,/g' Table_Kcat_summed.csv 
+
+
+
+*** option 3. to analyse only metabolism (category B) in KOs 
+*** a fragment of the eco00001.keg file
+A09100 Metabolism
+B
+B  09101 Carbohydrate metabolism
+C    00010 Glycolysis / Gluconeogenesis [PATH:eco00010]
+D      b2388 glk; glucokinase	K00845 glk; glucokinase [EC:2.7.1.2]
+D      b4025 pgi; glucose-6-phosphate isomerase	K01810 GPI; glucose-6-phosphate isomerase [EC:5.3.1.9]
+D      b3916 pfkA; 6-phosphofructokinase 1	K00850 pfkA; 6-phosphofructokinase 1 [EC:2.7.1.11]
+D      b1723 pfkB; 6-phosphofructokinase 2	K16370 pfkB; 6-phosphofructokinase 2 [EC:2.7.1.11]
+
+
+csplit -f metabolism -z xx01 /^B/ '{*}'
+*** produced metabolism01 up to metabolism12
+*** delete empty files or with just "B"
+find . -type f -name "metabolism[0-9]*" -size -3k -delete
+
+head -1 -v metabolism* > heads
+
+*** preparation of universal bash script separating the B categories
+sed 's/ /_/g' heads | sed 's/==>_/grep -o K[0-9]*  /g' | tr -d '\n'  | sed 's/_<==B__/ > metabolism_/g' | sed 's/grep/\ngrep/g' > code_to_B_separate
+bash code_to_B_separate
+
+for f in metabolism_* ; do sed -i '/^K$/d' $f ; done
+
+*** fish the Knumbers out from the final CSV table and keep the header
+head -1 Table_EMOBON_header_KO.csv > header
+
+*** some more automated way to generate the code
+ls metabolism_* | sed 's/^/for i in $(</g' | sed 's/$/) ; do grep $i Table_EMOBON_header_KO.csv ; done > Table_EMOBON_KcatB_/g' > code_to_
+ls metabolism_* > list
+paste code_to_ list | sed 's/\t//g' > code_to_fish 
+bash code_to_fish
+
+ls Table_EMOBON_KcatB_metabolism* | sed 's/^/cat header /g' | sed 's/$/ > /g'  > code_to_
+ls Table_EMOBON_KcatB_metabolism* > list
+paste code_to_ list | sed 's/\t//g' | sed 's/$/.csv/g'  > code_to_add_header
+bash code_to_add_header 
+
+
+*** automate this coding here - I placed the above metabolism catB separation as code_KcatB_metabolism_to_bash
+
+sed 's/xx01/xx02/g' code_KcatB_metabolism_to_bash > code_KcatB_gip_to_bash
+sed -i 's/metabolism/gip/g' code_KcatB_gip_to_bash
+bash code_KcatB_gip_to_bash
+
+sed 's/xx01/xx03/g' code_KcatB_metabolism_to_bash > code_KcatB_eip_to_bash
+sed -i 's/metabolism/eip/g' code_KcatB_eip_to_bash
+bash code_KcatB_eip_to_bash
+
+sed 's/xx01/xx04/g' code_KcatB_metabolism_to_bash > code_KcatB_cellular_to_bash
+sed -i 's/metabolism/cellular/g' code_KcatB_cellular_to_bash
+bash code_KcatB_cellular_to_bash
+
+sed 's/xx01/xx06/g' code_KcatB_metabolism_to_bash > code_KcatB_disease_to_bash
+sed -i 's/metabolism/disease/g' code_KcatB_disease_to_bash
+bash code_KcatB_disease_to_bash
+
+sed 's/xx01/xx07/g' code_KcatB_metabolism_to_bash > code_KcatB_brite_to_bash
+sed -i 's/metabolism/brite/g' code_KcatB_brite_to_bash
+bash code_KcatB_brite_to_bash
+
+sed 's/xx01/xx08/g' code_KcatB_metabolism_to_bash > code_KcatB_unclassified_to_bash
+sed -i 's/metabolism/unclassified/g' code_KcatB_unclassified_to_bash
+bash code_KcatB_unclassified_to_bash

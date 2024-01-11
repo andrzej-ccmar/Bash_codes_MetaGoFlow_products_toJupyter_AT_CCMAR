@@ -1,0 +1,71 @@
+*** by Andrzej Tkacz, CCMAR, 10 Jan 2024
+*** description for installing MicrobiomeAnalystR package to be run in Jupyter lab. More about MicrobiomeAnalystR can be found at https://github.com/xia-lab/MicrobiomeAnalystR/blob/master/README.Rmd
+*** pipeline testes for Ubuntu and local Jupyter notebook installation 
+*** R and miniconda needs to be pre-installed on the system
+
+# Install devtools to install MicrobiomeAnalystR- needs additional pre-installations
+
+sudo apt-get install libcurl4-openssl-dev libssl-dev
+sudo apt-get install -y libfontconfig1-dev
+sudo apt-get install -y libharfbuzz-dev
+sudo apt-get install -y libfribidi-dev
+sudo apt-get install -y libfreetype6-dev
+sudo apt-get install -y libtiff5-dev
+
+sudo apt install --no-install-recommends software-properties-common dirmngr
+gpg --show-keys /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc 
+wget -qO- https://cloud.r-project.org/bin/linux/ubuntu/marutter_pubkey.asc | sudo tee -a /etc/apt/trusted.gpg.d/cran_ubuntu_key.asc
+sudo add-apt-repository "deb https://cloud.r-project.org/bin/linux/ubuntu $(lsb_release -cs)-cran40/"
+sudo apt install --no-install-recommends r-base
+
+chmod -R 777 R
+R CMD INSTALL qiimer_0.9.4.tar.gz
+R CMD INSTALL biom_0.3.12.tar.gz 
+
+# in R
+install.packages("pacman")
+
+library(pacman)
+pacman::p_load(phyloseq, metacoder, pryr, biomformat, RColorBrewer, ggplot2, gplots, Cairo, igraph, BiocParallel, randomForest, metagenomeSeq, MASS, DESeq2, vegan, RJSONIO, ggfortify, pheatmap, xtable, genefilter, data.table, reshape, stringr, ape, grid, gridExtra, splitstackshape, edgeR, globaltest, R.utils, viridis, ggrepel, ppcor, qs, dplyr, limma, memoise, tidyverse)
+
+# back to terminal
+sudo apt-get install openssl-devel
+sudo apt-get install harfbuzz-devel
+sudo apt-get install libcurl-devel
+sudo apt-get install harfbuzz-devel fribidi-devel
+sudo apt-get install freetype-devel libpng-devel libtiff-devel libjpeg-devel
+sudo apt-get install libxml2-devel
+sudo apt-get install gh
+
+**** # if the installations fail, a problem may be the location of libraries in miniconda and usr/lib64 location
+sudo cp ~/miniconda3/lib/libicui18n.so.73 /usr/lib64/
+sudo cp ~/miniconda3/lib/libicuuc.so.73 /usr/lib64
+sudo cp ~/miniconda3/lib/libicuuc.so.73 /usr/lib64
+sudo cp ~/miniconda3/lib/libatomic.so.1.2.0 /usr/lib64
+sudo cp ~/miniconda3/lib/libatomic.so.1/usr/lib64
+
+
+
+# in R - if some tool is still missing, the appropiate error will be displayed.
+
+devtools::install_github("xia-lab/MicrobiomeAnalystR", build = TRUE, build_opts = c("--no-resave-data", "--no-manual"))
+
+
+# as a default Jupyter notebook comes with python only. In order to use R kernel and all the appropiate libraries follow below
+
+*** go to /home/<your_user>/miniconda3/envs/r-kernel
+source activate
+conda activate r-kernel
+conda install r-recommended r-irkernel
+
+# found at NASA website https://www.nas.nasa.gov/hecc/support/kb/how-to-set-up-r-kernel-in-jupyter-lab_685.html 
+# go to folder R /home/<your_user>/R/R/x86_64-pc-linux-gnu-library/4.3 (in case a different Linux or R is used please change the location accordingly)
+# and run R
+
+install.packages("IRkernel")
+IRkernel::installspec()
+
+# quit R and copy IRkernel into jupyter folder
+# in terminal
+sudo cp -R IRkernel /usr/local/jupyter-home
+

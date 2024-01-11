@@ -1,0 +1,115 @@
+*** by Andrzej Tkacz, CCMAR, 10 Jan 2024
+*** code to analyse and visualise taxonomomy (here SSU), a product of MetaGoFlow pipeline on EMO BON data
+*** description for preparing MetaGoFlow (MGF) data products into appropiate tables that can be visualised in R using MicrobiomeAnalystR 
+*** please see code_bash_prep_Jupyter_AT_CCMAR for details regarding MicrobiomeAnalystR installation for Jupyter
+*** R and miniconda needs to be pre-installed on the system
+
+*** currently the MGF data products are stored on a separate machine and needs to be transferred to the machine doing the analysis
+*** currently the analysis are done in terminal, but the code can be optimised for Jupyter deployment
+
+# on the MGF machine - getting a list of all the data products for biological sample - here as an example 16S rRNA (SSU) is used
+tree -f | grep  -o  "./usr.*SSU.fasta.mseq.tsv"
+
+*** save it as downloaded_SSU on your machine
+touch downloaded_SSU
+*** an example for the sample location
+./usr/local/scratch/metaGOflow-data-products/HCML-data/data/220223_JARVIS_HWLTKDRXY/DBB_AAABOSDA_1_HWLTKDRXY.UDI208/results/taxonomy-summary/SSU/DBB.merged_SSU.fasta.mseq.tsv
+
+*** remove mocks and blank sample - at least until now all the mock samples contain DDC prefix
+sed -i '/DDC/d' downloaded_SSU
+sed -i '/UDI204/d' downloaded_SSU
+*** also delete single samples - i.e. unique factors - with more samples being analysed this 
+sed -i '/UDI233/d' downloaded_SSU
+sed -i '/UDI235/d' downloaded_SSU
+sed -i '/UDI238/d' downloaded_SSU
+wc -l downloaded_SSU
+
+*** potential proeblem: downloaded list needs correction - for some reason if there is only a single sample in the folder (batch sequencing) then it is not placed in its own subfolder but rather dumped in the batch seq folder (at least in HCML data) - hence remove such samples
+*** the code below (needs simplification...) will produce both the OTU-like table and metadata table. For the metadata file for now only a simple list of stations, filtering sizes and material source is used
+*** and all the original metadata is stored as Batch_1_\&_2_sequencing_metadata_v1.csv (which needs to be placed in the same folder as your analysis) 
+*** in the future (once the additional metadata files are corrected -i.e. chlorophyll, salinity etc. ) more metadata will be added
+
+*** prepare a bash script to copy files between computers - if other types of files are required change "SSU" into approapiate suffix
+grep  UDI[0-9]* downloaded_SSU > temp ;
+mv temp downloaded ; 
+printf 'scp redi:/\n%.0s' {1..50} >  just_to_paste ;
+paste just_to_paste downloaded > downloaded_pasted ;
+sed -i 's/	.//g' downloaded_pasted ;
+sed -i 's/$/ . /g' downloaded_pasted  ;
+grep -o "SSU/.*merged_[L,S]SU.fasta.mseq.tsv" downloaded_pasted > file_names ;
+sed -i 's/^....//g' file_names ;
+awk '{print NR " "  $s}' file_names | cut -f1 -d" " | sed 's/^/S/g' > numbers ;
+paste file_names numbers | sed 's/^/| mv /g' > to_paste ;
+paste downloaded_pasted to_paste > to_bash ; 
+sed -i 's/|/;/g' to_bash ; 
+bash to_bash ; 
+
+*** downloaded files are renamed S1 to SX, change it to S001, S002, etc.
+for f in S[0-9] ; do rename 's/S/S00/g' $f ; done ; 
+for f in S[0-9][0-9] ; do rename 's/S/S0/g' $f ; done ; 
+
+*** for SSU files in order to create OTU-like table the first 3 columns are needed
+for f in S[0-9][0-9][0-9] ; do cut -f1 $f > $f\_cut1 ; done ; 
+for f in S[0-9][0-9][0-9]  ; do cut -f2 $f > $f\_cut2 ; done ; 
+for f in S[0-9][0-9][0-9]  ; do cut -f3 $f > $f\_cut3 ; done ; 
+for f in S*cut1 ; do sed -i 's/$/_/g' $f ; done ; 
+ls *cut1 > list_cut_1 ; 
+ls *cut2 > list_cut_2 ; 
+ls *cut3 > list_cut_3 ; 
+sed 's/_cut3/comb/g' list_cut_3 > listcomb ; 
+paste  list_cut_3 list_cut_2 listcomb > to_combine ; 
+sed -i 's/^/paste /g' to_combine ; 
+sed -i 's/cut2/cut2 > /g' to_combine ; 
+bash to_combine ; 
+
+*** prepared files are first used to create a full list of potential SSU annotations, which is added to each file in order to standardize their annotation list
+for f in S*comb ; do sed -i 's/_\t/_/g' $f ; done ; 
+for f in S*comb ; do sed '1,2d' $f > $f\clean ; done
+cat S*clean > main ;
+cut -f1 main > main_cut1 ;
+sort main_cut1 | uniq -c | grep -o sk__.* > row_name ; 
+sed 's/$/\t0/g' row_name > row_name0 ; 
+for f in S*combclean ; do cat $f row_name0 > $f\to_sort ; done ; 
+for f in S*to_sort ; do sort -r -k1,1 $f > $f\sorted ; done ; 
+for f in *sorted ; do sort -u -k1,1 $f > $f\unique ; done ; 
+for f in *sortedunique ; do cut -f2 $f > $f\clean ; done ;
+
+*** add full annotation list (row_names) and abundance of each taxa for each sample to create OTU-like table (here called Table_EMOBON.csv)
+paste row_name *sorteduniqueclean > Table_EMOBON.csv ; 
+
+*** remove not needed files
+rm S* ;  rm row* ; rm mai* ; rm to_combine ; rm list* 
+
+*** create a header for the OTU-like table
+grep -o UDI[0-9][0-9][0-9] downloaded > UDIcode ;
+grep -o [A-Z0-9]*.UDI[0-9][0-9][0-9] downloaded > sample_code
+grep -o /[L,S]SU  downloaded | grep -o [L,S]SU > LorS_SU ;
+paste sample_code > to_header
+sed -i '1s/^/#NAME\n/' to_header
+sed -i 's/\t/_/g' to_header 
+datamash transpose < to_header > Table_header
+
+*** add header to the table
+cat Table_header Table_EMOBON.csv > Table_EMOBON_header_SSU.csv
+
+*** prepare metadata file from csv file called Batch_1_&_2_sequencing_metadata_v1.csv - note that not all metadata is collected in this file (only station and sample type one), more metadata is being collected with each biological sample
+grep -o "H[A-Za-z0-9]*.UDI[0-9]*" downloaded > sample_list
+cut  -f1 -d, Batch_1_\&_2_sequencing_metadata_v1.csv > Batch_part1
+cut  -f22 -d, Batch_1_\&_2_sequencing_metadata_v1.csv > Batch_part2
+paste Batch_part1 Batch_part2 > Batch_cut1and22.csv
+for i in $(<sample_list) ; do grep $i  Batch_cut1and22.csv ; done > check.csv
+cut -f1 check.csv | cut -f2 -d_ > station_name
+cut -f1 check.csv | cut -f3 -d_ > material_name
+cut -f1 check.csv | cut -f5 -d_ > size_name
+sed -i 's/Wa/water/g' material_name
+sed -i 's/So/sediment/g' material_name
+sed -i 's/1/allsizes_for_sediment/g' size_name
+sed -i 's/^2/allsizes_for_sediment/g' size_name
+sed -i 's/micro/allsizes_for_sediment/g' size_name
+sed 's/$/_/g' station_name > station_name_
+sed 's/$/_/g' material_name > material_name_
+paste -d "" station_name_ material_name > station_and_material
+paste -d "" material_name_ size_name > material_and_size
+paste -d "" station_name_ material_name_ size_name > ALLfactors
+paste sample_code station_name material_name size_name station_and_material material_and_size ALLfactors > fakemeta
+sed  '1s/^/#NAME\tstation\tmaterial\tsize\tstation_and_material\tmaterial_and_size\tALLfactors\n/' fakemeta > real_metadata.csv

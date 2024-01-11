@@ -1,0 +1,99 @@
+*** code to analyse and visualise GO terms, a product of MetaGoFlow pipeline on EMO BON data
+*** for a detail explanation of the code please see code_bash_prep_SSUdata_AT_CCMAR
+*** the files are (currently) located on redi, find them by going to the root and
+tree -f | grep  -o  "./usr.*merged.summary.go"
+
+*** on your machine create and copy the file list output into:
+touch downloaded_GO
+
+*** remove mocks and blank sample
+sed -i '/DDC/d' downloaded_GO
+sed -i '/UDI204/d' downloaded_GO
+sed -i '/UDI201/d' downloaded_SSU
+sed -i '/UDI213/d' downloaded_SSU
+sed -i '/UDI212/d' downloaded_SSU
+*** also delete single samples - i.e. unique factors
+sed -i '/UDI233/d' downloaded_GO
+sed -i '/UDI235/d' downloaded_GO
+sed -i '/UDI238/d' downloaded_GO
+
+uniq downloaded_GO > downloaded_GO_uniq
+wc -l downloaded_GO_uniq
+
+*** downloaded need correction - for some reason if there is only a single sample in the folder (batch sequencing) then it is not placed in its own subfolder but rather dumped in the batch seq folder (at least in HCML data) - hence remove such samples
+
+grep  UDI[0-9]* downloaded_GO_uniq > temp ;
+mv temp downloaded ; 
+printf 'scp redi:/\n%.0s' {1..50} >  just_to_paste ;
+paste just_to_paste downloaded > downloaded_pasted ;
+sed -i 's/	.//g' downloaded_pasted ;
+sed -i 's/$/ . /g' downloaded_pasted  ;
+grep -o ....merged.summary.go downloaded_pasted > file_names ;
+awk '{print NR " "  $s}' file_names | cut -f1 -d" " | sed 's/^/S/g' > numbers ;
+paste file_names numbers | sed 's/^/| mv /g' > to_paste ;
+paste downloaded_pasted to_paste > to_bash ; 
+sed -i 's/|/;/g' to_bash ; 
+bash to_bash ; 
+for f in S[0-9] ; do rename 's/S/S00/g' $f ; done ; 
+for f in S[0-9][0-9] ; do rename 's/S/S0/g' $f ; done ; 
+
+*** to get the GO:[0-9]* number - please note that the data structure differs from SSU and hence the code needs some changes
+*** cut1 files contain GO:[0-9]*
+for f in S[0-9][0-9][0-9] ; do cut -f2 -d'"' $f > $f\_cut1 ; done ; 
+*** to get the abundance
+*** cut2 files contain the abundance [0-9]*
+for f in S[0-9][0-9][0-9]  ; do cut -f8 -d'"' $f > $f\_cut2 ; done ; 
+
+ls *cut1 > list_cut_1 ; 
+ls *cut2 > list_cut_2 ; 
+sed 's/_cut2/comb/g' list_cut_2 > listcomb ; 
+paste  list_cut_1 list_cut_2 listcomb > to_combine ; 
+sed -i 's/^/paste /g' to_combine ; 
+sed -i 's/cut2/cut2 > /g' to_combine ; 
+bash to_combine ; 
+cat S*comb > main ;
+cut -f1 main > main_cut1 ;
+sort main_cut1 | uniq -c | grep -o "GO:[0-9]*" > row_name 
+sed 's/$/\t0/g' row_name > row_name0 ; 
+for f in S*comb ; do cat $f row_name0 > $f\to_sort ; done ; 
+for f in S*to_sort ; do sort -r -k1,1 $f > $f\sorted ; done ; 
+for f in *sorted ; do sort -u -k1,1 $f > $f\unique ; done ; 
+for f in *sortedunique ; do cut -f2 $f > $f\clean ; done ;
+
+*** produce OTU-like table containg GO terms instead of taxonomical assignments
+paste row_name *sorteduniqueclean > Table_EMOBON_GO.csv ; 
+
+
+
+
+rm S* ;  rm row* ; rm mai* ; rm to_combine ; rm list* 
+grep -o UDI[0-9][0-9][0-9] downloaded > UDIcode ;
+grep -o [A-Z0-9]*.UDI[0-9][0-9][0-9] downloaded > sample_code
+grep -o /[L,S]SU  downloaded | grep -o [L,S]SU > LorS_SU ;
+paste sample_code > to_header
+sed -i '1s/^/#NAME\n/' to_header
+sed -i 's/\t/_/g' to_header 
+datamash transpose < to_header > Table_header
+cat Table_header Table_EMOBON_GO.csv > Table_EMOBON_header_GO.csv
+
+
+grep -o "H[A-Za-z0-9]*.UDI[0-9]*" downloaded > sample_list
+cut  -f1 -d, Batch_1_\&_2_sequencing_metadata_v1.csv > Batch_part1
+cut  -f22 -d, Batch_1_\&_2_sequencing_metadata_v1.csv > Batch_part2
+paste Batch_part1 Batch_part2 > Batch_cut1and22.csv
+for i in $(<sample_list) ; do grep $i  Batch_cut1and22.csv ; done > check.csv
+cut -f1 check.csv | cut -f2 -d_ > station_name
+cut -f1 check.csv | cut -f3 -d_ > material_name
+cut -f1 check.csv | cut -f5 -d_ > size_name
+sed -i 's/Wa/water/g' material_name
+sed -i 's/So/sediment/g' material_name
+sed -i 's/1/allsizes_for_sediment/g' size_name
+sed -i 's/^2/allsizes_for_sediment/g' size_name
+sed -i 's/micro/allsizes_for_sediment/g' size_name
+sed 's/$/_/g' station_name > station_name_
+sed 's/$/_/g' material_name > material_name_
+paste -d "" station_name_ material_name > station_and_material
+paste -d "" material_name_ size_name > material_and_size
+paste -d "" station_name_ material_name_ size_name > ALLfactors
+paste sample_code station_name material_name size_name station_and_material material_and_size ALLfactors > fakemeta
+sed  '1s/^/#NAME\tstation\tmaterial\tsize\tstation_and_material\tmaterial_and_size\tALLfactors\n/' fakemeta > real_metadata_GO.csv
